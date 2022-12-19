@@ -2,7 +2,7 @@ import logging
 from statistics import mean
 import argparse
 import pandas as pd
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 import wandb
 from simpletransformers.classification import ClassificationArgs, ClassificationModel
 
@@ -22,7 +22,7 @@ args = parser.parse_args()
 sweep_config = {
     "name": "bias-sweep-batch-16",
     "method": "bayes",
-    "metric": {"name": "accuracy", "goal": "maximize"},
+    "metric": {"name": "f1", "goal": "maximize"},
     "parameters": {
         "num_train_epochs": {"min": 6, "max": 10},
         "learning_rate": {'max': 0.001, 'min': 0.0001}, #{"min": 0.0, "max": 4e-4},
@@ -89,8 +89,8 @@ def train():
     if args.model_name == 'roberta':
         model = ClassificationModel("roberta", "roberta-base", use_cuda=True, args=model_args)
     elif args.model_name == 'deberta':
-        model = ClassificationModel("deberta", "microsoft/deberta-v2-base", use_cuda=True, args=model_args)
-    elif args.model_name == '':
+        model = ClassificationModel("deberta", "microsoft/deberta-v3-xlarge", use_cuda=True, args=model_args)
+    elif args.model_name == 'electra':
         model = ClassificationModel("electra", "google/electra-base-generator", use_cuda=True, args=model_args)
 
 
@@ -98,7 +98,7 @@ def train():
     model.train_model(
         train_df,
         eval_df=eval_df,
-        accuracy=lambda truth, predictions: accuracy_score(
+        f1=lambda truth, predictions: f1_score(
             truth, [round(p) for p in predictions]
         ),
     )
@@ -106,4 +106,4 @@ def train():
     wandb.join()
 
     #model.eval_model(test_df, verbose=True)
-wandb.agent(sweep_id, train)
+wandb.agent(sweep_id, train, count=16)

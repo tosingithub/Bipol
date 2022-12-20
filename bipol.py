@@ -38,7 +38,7 @@ transformers_logger = logging.getLogger("transformers")
 transformers_logger.setLevel(logging.WARNING)
 
 
-# Preparing train data
+# Preparing the data
 if args.data_folder == jig_folder:
     train_df = pd.read_csv(jig_folder + 'jig_train.csv', header=0)
     eval_df = pd.read_csv(jig_folder + 'jig_val.csv', header=0)
@@ -63,14 +63,14 @@ model_args.evaluate_during_training = True
 model_args.evaluate_during_training_silent = False
 model_args.evaluate_during_training_steps = 1000
 model_args.evaluate_during_training_steps = -1
-model_args.save_eval_checkpoints = False
-model_args.save_model_every_epoch = False
+model_args.save_eval_checkpoints = True
+model_args.save_model_every_epoch = True
 #model_args.learning_rate = 1e-5
 model_args.manual_seed = 4
 model_args.max_seq_length = 256
 model_args.multiprocessing_chunksize = 5000
 model_args.no_cache = True
-model_args.no_save = True
+model_args.no_save = False
 #model_args.num_train_epochs = 1
 model_args.overwrite_output_dir = True
 model_args.reprocess_input_data = True
@@ -89,7 +89,7 @@ def train():
     if args.model_name == 'roberta':
         model = ClassificationModel("roberta", "roberta-base", use_cuda=True, args=model_args)
     elif args.model_name == 'deberta':
-        model = ClassificationModel("deberta", "microsoft/deberta-v3-xlarge", use_cuda=True, args=model_args)
+        model = ClassificationModel("deberta", "microsoft/deberta-base", use_cuda=True, args=model_args)
     elif args.model_name == 'electra':
         model = ClassificationModel("electra", "google/electra-base-generator", use_cuda=True, args=model_args)
 

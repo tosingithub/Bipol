@@ -2,15 +2,17 @@ import logging
 from statistics import mean
 import argparse
 import pandas as pd
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import f1_score
 import wandb
 from simpletransformers.classification import ClassificationArgs, ClassificationModel
+import re
+import utility
+
 
 #from utils import load_rte_data_file
 
 jig_folder = '/home/shared_data/bipol/Jigsaw_kaggle/'
 sbic_folder = '/home/shared_data/bipol/sbicv2/'
-md_folder = '/home/shared_data/bipol/md/'
 new_folder = '/home/shared_data/bipol/new/'
 
 ### If run from CLI, you may change the 2 default arguments below.
@@ -41,20 +43,25 @@ transformers_logger.setLevel(logging.WARNING)
 # Preparing the data
 if args.data_folder == jig_folder:
     train_df = pd.read_csv(jig_folder + 'jig_train.csv', header=0)
+    train_df = utility.preprocess_pandas(train_df, list(train_df.columns))
     eval_df = pd.read_csv(jig_folder + 'jig_val.csv', header=0)
+    eval_df = utility.preprocess_pandas(eval_df, list(eval_df.columns))
     test_df = pd.read_csv(jig_folder + 'jig_test.csv', header=0)
+    test_df = utility.preprocess_pandas(test_df, list(test_df.columns))
 elif args.data_folder == sbic_folder:
     train_df = pd.read_csv(sbic_folder + 'sbic_train.csv', header=0)
+    train_df = utility.preprocess_pandas(train_df, list(train_df.columns))
     eval_df = pd.read_csv(sbic_folder + 'sbic_val.csv', header=0)
+    eval_df = utility.preprocess_pandas(eval_df, list(eval_df.columns))
     test_df = pd.read_csv(sbic_folder + 'sbic_test.csv', header=0)
-elif args.data_folder == md_folder:
-    train_df = pd.read_csv(md_folder + 'md_train.csv', header=0)
-    eval_df = pd.read_csv(md_folder + 'md_val.csv', header=0)
-    test_df = pd.read_csv(md_folder + 'md_test.csv', header=0)
+    test_df = utility.preprocess_pandas(test_df, list(test_df.columns))
 elif args.data_folder == new_folder:
     train_df = pd.read_csv(new_folder + 'new_train.csv', header=0)
+    train_df = utility.preprocess_pandas(train_df, list(train_df.columns))
     eval_df = pd.read_csv(new_folder + 'new_val.csv', header=0)
+    eval_df = utility.preprocess_pandas(eval_df, list(eval_df.columns))
     test_df = pd.read_csv(new_folder + 'new_test.csv', header=0)
+    test_df = utility.preprocess_pandas(test_df, list(test_df.columns))
 
 
 model_args = ClassificationArgs()

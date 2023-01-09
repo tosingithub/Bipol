@@ -17,7 +17,7 @@ new_folder = '/home/shared_data/bipol/new/'
 
 ### If run from CLI, you may change the 2 default arguments below.
 parser = argparse.ArgumentParser(description='Bias Detection')
-parser.add_argument('--data_folder', type=str, default=jig_folder, help='location of the data')     # of sbic_folder
+parser.add_argument('--data_folder', type=str, default=sbic_folder, help='location of the data')     # of sbic_folder
 parser.add_argument('--model_name', type=str, default='roberta', help='name of the deep model')     # or deberta
 args = parser.parse_args()
 
@@ -27,7 +27,7 @@ sweep_config = {
     "metric": {"name": "f1", "goal": "maximize"},
     "parameters": {
         "num_train_epochs": {"min": 6, "max": 10},
-        "learning_rate": {'max': 0.001, 'min': 0.0001}, #{"min": 0.0, "max": 4e-4},
+        "learning_rate": {'max': 0.001, 'min': 0.00002}, #{"min": 0.0, "max": 4e-4},
     },
     "early_terminate": {"type": "hyperband", "min_iter": 6,},
 }
@@ -73,7 +73,7 @@ model_args.evaluate_during_training_steps = -1
 model_args.save_eval_checkpoints = True
 model_args.save_model_every_epoch = True
 #model_args.learning_rate = 1e-5
-model_args.manual_seed = 4
+# model_args.manual_seed = 4
 model_args.max_seq_length = 256
 model_args.multiprocessing_chunksize = 5000
 model_args.no_cache = True
@@ -81,7 +81,7 @@ model_args.no_save = False
 #model_args.num_train_epochs = 1
 model_args.overwrite_output_dir = True
 model_args.reprocess_input_data = True
-model_args.train_batch_size = 16
+model_args.train_batch_size = 32 # 16
 model_args.gradient_accumulation_steps = 2
 model_args.labels_list = ["biased", "unbiased"]
 model_args.output_dir = "outputs"

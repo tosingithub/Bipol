@@ -14,6 +14,8 @@ import numpy as np
 import copy
 import os
 import time
+from datasets import load_dataset
+
 
 #from utils import load_rte_data_file
 
@@ -23,25 +25,25 @@ sbic_folder = '/home/shared_data/bipol/sbicv2/'
 new_folder = '/home/shared_data/bipol/new/'
 
 ### --modeldir REMEMBER to match with --model_name
-rob_new = '/home/oluade/e_bipol/saved_models/roberta_new/'
-rob_sbic = '/home/oluade/e_bipol/saved_models/roberta_sbic/'
-rob_jig = '/home/oluade/e_bipol/saved_models/roberta_jig/'
-elec_sbic = '/home/oluade/e_bipol/saved_models/electra_sbic/'
-elec_new = '/home/oluade/e_bipol/saved_models/electra_new/'
+rob_new = '/home/oluade/e_bipol/saved_models2/roberta_new/'
+rob_sbic = '/home/oluade/e_bipol/saved_models2/roberta_sbic/'
+rob_jig = '/home/oluade/e_bipol/saved_models2/roberta_jig/'
+elec_sbic = '/home/oluade/e_bipol/saved_models2/electra_sbic/'
+elec_new = '/home/oluade/e_bipol/saved_models2/electra_new/'
 
-elec_jig = '/home/oluade/e_bipol/saved_models/electra_jig/'
-deb_new = '/home/oluade/e_bipol/saved_models/deberta_new/'
-deb_sbic = '/home/oluade/e_bipol/saved_models/deberta_sbic/'
-deb_jig = '/home/oluade/e_bipol/saved_models/deberta_jig/'
+elec_jig = '/home/oluade/e_bipol/saved_models2/electra_jig/'
+deb_new = '/home/oluade/e_bipol/saved_models2/deberta_new/'
+deb_sbic = '/home/oluade/e_bipol/saved_models2/deberta_sbic/'
+deb_jig = '/home/oluade/e_bipol/saved_models2/deberta_jig/'
 
 
 
 ### If run from CLI, you may change the 2 default arguments below.
 parser = argparse.ArgumentParser(description='Bias Detection')
-parser.add_argument('--data_folder', type=str, default=new_folder, help='location of the data')     # of sbic_folder
-parser.add_argument('--model_name', type=str, default='electra', help='name of the deep model')     # or deberta
+parser.add_argument('--data_folder', type=str, default=sbic_folder, help='location of the data')     # of sbic_folder
+parser.add_argument('--model_name', type=str, default='roberta', help='name of the deep model')     # or deberta
 parser.add_argument('--axes_folder', type=str, default='axes/', help='name of the folder containing the bias axes files')     # or deberta
-parser.add_argument('--modeldir', type=str, default=elec_new, help='directory of the model checkpoint')
+parser.add_argument('--modeldir', type=str, default=rob_jig, help='directory of the model checkpoint')
 
 args = parser.parse_args()
 
@@ -69,8 +71,13 @@ elif args.data_folder == new_folder:
     train_df = utility.preprocess_pandas(train_df, list(train_df.columns))
     eval_df = pd.read_csv(new_folder + 'new_val.csv', header=0)
     eval_df = utility.preprocess_pandas(eval_df, list(eval_df.columns))
-    test_df = pd.read_csv(new_folder + 'new_test1.csv', header=0)
+    test_df = pd.read_csv(new_folder + 'new_test.csv', header=0)
     test_df = utility.preprocess_pandas(test_df, list(test_df.columns))
+elif args.data_folder == 'squad':
+    train_df = load_dataset('squad_v2', split='validation')
+    print(train_df['context'])                                           # returns a list
+elif args.data_folder == 'imdb':
+    train_df = load_dataset('imdb', split='validation')
 
 # model_args = ClassificationArgs()
 # model_args.eval_batch_size = 32
@@ -160,7 +167,8 @@ if __name__=="__main__":
             ax_s.append(ax_shade)
         axes[axis_name] = ax_s
 
-    axes2 = copy.deepcopy(axes)                                                         # for explainability
+    test_df_ = None                                                             # initialize count of biased samples to nothing for use in corpus-level bipol
+    axes2 = copy.deepcopy(axes)                                                 # for explainability
     predictions, tvals = [], []
     bipol_sent, bip_sent, bipol_sent_agg, bipol_cop = 0, 0, 0, 0                # initialize important variables
     eval_start_time = time.time()
@@ -172,9 +180,11 @@ if __name__=="__main__":
 
         # Corpus-level & sentence-level evaluation:
         print("No of classes: ", model.num_labels)
-        #test_df = test_df[:20]          # small for trials
+        #test_df = test_df[:8]          # small for trials
+        print('Total no: ', len(test_df))
 
         test_df2 = test_df.copy()                                           # test_df2 for label replacement for roberta below
+        print(test_df.head())
         if not 'prediction' in test_df.columns:
             test_df.insert(len(test_df.columns), 'prediction', '')
         
@@ -194,20 +204,23 @@ if __name__=="__main__":
         preds_flat = np.argmax(predictions, axis=1).flatten()
         # Using list comprehension below should be faster
         for rno in range(len(test_df['id'])):
-            test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 0), 'prediction'] = 'unbiased'
             test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 1), 'prediction'] = 'biased'
+            test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 0), 'prediction'] = 'unbiased'
             # sentence-level bipol for biased samples only - iterate through the dict of axes and calculate
             if preds_flat[rno] == 1:
+                #print(" Prediction is 1 - BIASED", rno)
                 for a_k, a_v in axes.items():
-                    for b in range(len(a_v)):
-                        list_shade = []                                             # initialize
+                    list_shade = []                                                 # initialize
+                    for b in range(len(a_v)):                                       # Go to next dict in list
                         inshade_cnt = 0
                         for k in a_v[b].keys():
-                            a_v[b][k] = test_df['comment_text'][rno].count(k)
+                            a_v[b][k] = test_df['comment_text'][rno].count(k)       # In future make the column name dynamic
                             axes2[a_k][b][k] = axes2[a_k][b][k] + a_v[b][k]         # sum all sensitive tokens for explainability
+                            #print(a_v[b][k])
                             inshade_cnt += a_v[b][k]
+                        #print(inshade_cnt)
                         list_shade.append(inshade_cnt)
-                            #print(axes)
+                    #print('Shades ', list_shade)
                     bip_divis = sum(list_shade)
                     bip_sent1 = max(list_shade)
                     list_shade.remove(bip_sent1)
@@ -218,17 +231,24 @@ if __name__=="__main__":
                     if bip_divis > 0:                                           # To avoid divide by zero error
                         bip_sent = abs(bip_sent1 - bip_sent2) / bip_divis
                     bipol_sent += bip_sent                                       # sum over axes
-
+                
+                #print('Total over axis ', bipol_sent, len(axes))
                 bipol_sent = bipol_sent/len(axes)                                    # average over axes per sentence
+                #print('After division - Total over axis ', bipol_sent)
                 bipol_sent_agg += bipol_sent                                        # sum over multiple sentences
-                #print(bipol_sent_agg)
+                #print('Total over sentences ', bipol_sent_agg)
                 bipol_sent = 0                                                      # re-initialize for next sentence
-
+        
         test_df_ = test_df[test_df['prediction'] == 'biased']                       # Find out the total of biased samples
+        print(test_df_.head())
+        print('biased total no: ', len(test_df_))
         if len(test_df_) > 0:
             bipol_sent_agg = bipol_sent_agg/len(test_df_)                           # Overall sentence-level bipol
+            print('After division - Total over sentences ', bipol_sent_agg)
+        else:
+            bipol_sent_agg = 0                                                      # return zero for <= 0 (hopefully shouldn't be)
 
-        if 'label' in test_df2.columns:
+        if 'label' in test_df2.columns:                                             # In future, make this column dynamic
             test_df2['label'] = test_df2.label.replace(label_dict)                  # replace labels with their nos for F1 scores
             tvals = test_df2['label'].values.tolist()
 
@@ -236,16 +256,18 @@ if __name__=="__main__":
         tokenizer = DebertaTokenizer.from_pretrained(args.modeldir, truncation=True, do_lower_case=True)
         model = DebertaForSequenceClassification.from_pretrained(args.modeldir)
 
-                # Corpus-level & sentence-level evaluation:
+        # Corpus-level & sentence-level evaluation:
         print("No of classes: ", model.num_labels)
-        test_df = test_df[:20]          # small for trials
+        #test_df = test_df[:8]          # small for trials
+        print('Total no: ', len(test_df))
 
         test_df2 = test_df.copy()                                           # test_df2 for label replacement for roberta below
+        print(test_df.head())
         if not 'prediction' in test_df.columns:
             test_df.insert(len(test_df.columns), 'prediction', '')
         
         label_dict = {}                                                     # For associating raw labels with indices/nos
-        pred_ts = args.model_name.split('/')[-1] + '_output.csv'            # filename of output file
+        #pred_ts = args.model_name.split('/')[-1] + '_output.csv'            # filename of output file
         possible_labels = train_df.label.unique()
         for index, possible_label in enumerate(possible_labels):
             label_dict[possible_label] = index
@@ -260,20 +282,23 @@ if __name__=="__main__":
         preds_flat = np.argmax(predictions, axis=1).flatten()
         # Using list comprehension below should be faster
         for rno in range(len(test_df['id'])):
-            test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 0), 'prediction'] = 'unbiased'
             test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 1), 'prediction'] = 'biased'
+            test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 0), 'prediction'] = 'unbiased'
             # sentence-level bipol for biased samples only - iterate through the dict of axes and calculate
             if preds_flat[rno] == 1:
+                #print(" Prediction is 1 - BIASED", rno)
                 for a_k, a_v in axes.items():
-                    for b in range(len(a_v)):
-                        list_shade = []                                             # initialize
+                    list_shade = []                                                 # initialize
+                    for b in range(len(a_v)):                                       # Go to next dict in list
                         inshade_cnt = 0
                         for k in a_v[b].keys():
-                            a_v[b][k] = test_df['comment_text'][rno].count(k)
+                            a_v[b][k] = test_df['comment_text'][rno].count(k)       # In future make the column name dynamic
                             axes2[a_k][b][k] = axes2[a_k][b][k] + a_v[b][k]         # sum all sensitive tokens for explainability
+                            #print(a_v[b][k])
                             inshade_cnt += a_v[b][k]
+                        #print(inshade_cnt)
                         list_shade.append(inshade_cnt)
-                            #print(axes)
+                    #print('Shades ', list_shade)
                     bip_divis = sum(list_shade)
                     bip_sent1 = max(list_shade)
                     list_shade.remove(bip_sent1)
@@ -284,17 +309,24 @@ if __name__=="__main__":
                     if bip_divis > 0:                                           # To avoid divide by zero error
                         bip_sent = abs(bip_sent1 - bip_sent2) / bip_divis
                     bipol_sent += bip_sent                                       # sum over axes
-
+                
+                #print('Total over axis ', bipol_sent, len(axes))
                 bipol_sent = bipol_sent/len(axes)                                    # average over axes per sentence
+                #print('After division - Total over axis ', bipol_sent)
                 bipol_sent_agg += bipol_sent                                        # sum over multiple sentences
-                #print(bipol_sent_agg)
+                #print('Total over sentences ', bipol_sent_agg)
                 bipol_sent = 0                                                      # re-initialize for next sentence
-
+        
         test_df_ = test_df[test_df['prediction'] == 'biased']                       # Find out the total of biased samples
+        print(test_df_.head())
+        print('biased total no: ', len(test_df_))
         if len(test_df_) > 0:
             bipol_sent_agg = bipol_sent_agg/len(test_df_)                           # Overall sentence-level bipol
+            print('After division - Total over sentences ', bipol_sent_agg)
+        else:
+            bipol_sent_agg = 0                                                      # return zero for <= 0 (hopefully shouldn't be)
 
-        if 'label' in test_df2.columns:
+        if 'label' in test_df2.columns:                                             # In future, make this column dynamic
             test_df2['label'] = test_df2.label.replace(label_dict)                  # replace labels with their nos for F1 scores
             tvals = test_df2['label'].values.tolist()
 
@@ -302,16 +334,18 @@ if __name__=="__main__":
         tokenizer = ElectraTokenizer.from_pretrained(args.modeldir, truncation=True, do_lower_case=True)
         model = ElectraForSequenceClassification.from_pretrained(args.modeldir)
 
-                # Corpus-level & sentence-level evaluation:
+        # Corpus-level & sentence-level evaluation:
         print("No of classes: ", model.num_labels)
-        test_df = test_df[:20]          # small for trials
+        #test_df = test_df[:8]          # small for trials
+        print('Total no: ', len(test_df))
 
         test_df2 = test_df.copy()                                           # test_df2 for label replacement for roberta below
+        print(test_df.head())
         if not 'prediction' in test_df.columns:
             test_df.insert(len(test_df.columns), 'prediction', '')
         
         label_dict = {}                                                     # For associating raw labels with indices/nos
-        pred_ts = args.model_name.split('/')[-1] + '_output.csv'            # filename of output file
+        #pred_ts = args.model_name.split('/')[-1] + '_output.csv'            # filename of output file
         possible_labels = train_df.label.unique()
         for index, possible_label in enumerate(possible_labels):
             label_dict[possible_label] = index
@@ -326,20 +360,23 @@ if __name__=="__main__":
         preds_flat = np.argmax(predictions, axis=1).flatten()
         # Using list comprehension below should be faster
         for rno in range(len(test_df['id'])):
-            test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 0), 'prediction'] = 'unbiased'
             test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 1), 'prediction'] = 'biased'
+            test_df.loc[(test_df['id'] == test_df['id'][rno]) & (preds_flat[rno] == 0), 'prediction'] = 'unbiased'
             # sentence-level bipol for biased samples only - iterate through the dict of axes and calculate
             if preds_flat[rno] == 1:
+                #print(" Prediction is 1 - BIASED", rno)
                 for a_k, a_v in axes.items():
-                    for b in range(len(a_v)):
-                        list_shade = []                                             # initialize
+                    list_shade = []                                                 # initialize
+                    for b in range(len(a_v)):                                       # Go to next dict in list
                         inshade_cnt = 0
                         for k in a_v[b].keys():
-                            a_v[b][k] = test_df['comment_text'][rno].count(k)
+                            a_v[b][k] = test_df['comment_text'][rno].count(k)       # In future make the column name dynamic
                             axes2[a_k][b][k] = axes2[a_k][b][k] + a_v[b][k]         # sum all sensitive tokens for explainability
+                            #print(a_v[b][k])
                             inshade_cnt += a_v[b][k]
+                        #print(inshade_cnt)
                         list_shade.append(inshade_cnt)
-                            #print(axes)
+                    #print('Shades ', list_shade)
                     bip_divis = sum(list_shade)
                     bip_sent1 = max(list_shade)
                     list_shade.remove(bip_sent1)
@@ -350,17 +387,24 @@ if __name__=="__main__":
                     if bip_divis > 0:                                           # To avoid divide by zero error
                         bip_sent = abs(bip_sent1 - bip_sent2) / bip_divis
                     bipol_sent += bip_sent                                       # sum over axes
-
+                
+                #print('Total over axis ', bipol_sent, len(axes))
                 bipol_sent = bipol_sent/len(axes)                                    # average over axes per sentence
+                #print('After division - Total over axis ', bipol_sent)
                 bipol_sent_agg += bipol_sent                                        # sum over multiple sentences
-                #print(bipol_sent_agg)
+                #print('Total over sentences ', bipol_sent_agg)
                 bipol_sent = 0                                                      # re-initialize for next sentence
-
+        
         test_df_ = test_df[test_df['prediction'] == 'biased']                       # Find out the total of biased samples
+        print(test_df_.head())
+        print('biased total no: ', len(test_df_))
         if len(test_df_) > 0:
             bipol_sent_agg = bipol_sent_agg/len(test_df_)                           # Overall sentence-level bipol
+            print('After division - Total over sentences ', bipol_sent_agg)
+        else:
+            bipol_sent_agg = 0                                                      # return zero for <= 0 (hopefully shouldn't be)
 
-        if 'label' in test_df2.columns:
+        if 'label' in test_df2.columns:                                             # In future, make this column dynamic
             test_df2['label'] = test_df2.label.replace(label_dict)                  # replace labels with their nos for F1 scores
             tvals = test_df2['label'].values.tolist()
 
@@ -374,10 +418,11 @@ if __name__=="__main__":
         # Let the metric check for FP to remove them for datasets that have labels.
         bipol_cop = (tp + fp)/(tn + fp + fn + tp)
     else:
-        bipol_cop = bipol_sent_agg / len(test_df)                                   # alternative calculation when there's no ground truth labels
+        print('Biased no, Total no ', len(test_df_), len(test_df))
+        bipol_cop = len(test_df_) / len(test_df)                                   # alternative calculation when there's no ground truth labels
     bipol = bipol_cop * bipol_sent_agg
 
-    ### explain the score
+    # ### explain the score
     print("Some explanation: It does not say if the bias is towards or against a group:\n")
     message = ''
     if bipol == 0:
@@ -405,12 +450,19 @@ if __name__=="__main__":
         print(message)
         print(f'{axes2}')
     
+    pred_ts = args.modeldir.split('/')[-2]                              # for filename to save
     print(' ')
     print(f'Evaluation time: {eval_time_elapsed}')
-    print(f'F1: {f1}, weighted F1: {f1_w}, macro F1: {f1_m}, bipol corpus-level: {bipol_cop}, bipol sent-level: {bipol_sent_agg}, bipol: {bipol}')
-    pred_ts = args.modeldir.split('/')[-2]
-    with open(pred_ts+ '_results.txt', "a+") as f:
-        s = f.write(f'Evaluation time: {eval_time_elapsed}, F1: {f1}, weighted F1: {f1_w}, macro F1: {f1_m}, bipol corpus-level: {bipol_cop}, bipol sent-level: {bipol_sent_agg}, bipol: {bipol}')
-        s = f.write(f'\n\n{message}')
-        s = f.write(f'\n\n{axes2}')
+    if len(tvals) > 0:
+        print(f'F1: {f1}, weighted F1: {f1_w}, macro F1: {f1_m}, All - tn, fp, fn, tp: {tn, fp, fn, tp}, bipol corpus-level: {bipol_cop}, bipol sentence-level: {bipol_sent_agg}, bipol: {bipol}')
+        with open(pred_ts+ '_results.txt', "a+") as f:
+            s = f.write(f'Evaluation time: {eval_time_elapsed}, F1: {f1}, weighted F1: {f1_w}, macro F1: {f1_m}, bipol corpus-level: {bipol_cop}, bipol sentence-level: {bipol_sent_agg}, bipol: {bipol}')
+            s = f.write(f'\n\n{message}')
+            s = f.write(f'\n\n{axes2}')
+    else:
+        print(f'bipol corpus-level: {bipol_cop}, bipol sentence-level: {bipol_sent_agg}, bipol: {bipol}')
+        with open(pred_ts+ '_results.txt', "a+") as f:
+            s = f.write(f'Evaluation time: {eval_time_elapsed}, bipol corpus-level: {bipol_cop}, bipol sentence-level: {bipol_sent_agg}, bipol: {bipol}')
+            s = f.write(f'\n\n{message}')
+            s = f.write(f'\n\n{axes2}')
     test_df.to_csv(pred_ts  + '_output.csv', index=False)

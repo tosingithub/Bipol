@@ -14,11 +14,12 @@ import utility
 jig_folder = '/home/shared_data/bipol/Jigsaw_kaggle/'
 sbic_folder = '/home/shared_data/bipol/sbicv2/'
 new_folder = '/home/shared_data/bipol/new/'
+mab_swedish = '/home/shared_data/bipol/mab_swedish/'
 
 ### If run from CLI, you may change the 2 default arguments below.
 parser = argparse.ArgumentParser(description='Bias Detection')
-parser.add_argument('--data_folder', type=str, default=sbic_folder, help='location of the data')     # of sbic_folder
-parser.add_argument('--model_name', type=str, default='roberta', help='name of the deep model')     # or deberta
+parser.add_argument('--data_folder', type=str, default=mab_swedish, help='location of the data')     # of sbic_folder
+parser.add_argument('--model_name', type=str, default='sv_bert', help='name of the deep model')     # or deberta
 args = parser.parse_args()
 
 sweep_config = {
@@ -62,6 +63,13 @@ elif args.data_folder == new_folder:
     eval_df = utility.preprocess_pandas(eval_df, list(eval_df.columns))
     test_df = pd.read_csv(new_folder + 'new_test.csv', header=0)
     test_df = utility.preprocess_pandas(test_df, list(test_df.columns))
+elif args.data_folder == mab_swedish:
+    train_df = pd.read_csv(mab_swedish + 'swedish_mab_train.csv', header=0)
+    train_df = utility.preprocess_pandas(train_df, list(train_df.columns))
+    eval_df = pd.read_csv(mab_swedish + 'swedish_mab_val.csv', header=0)
+    eval_df = utility.preprocess_pandas(eval_df, list(eval_df.columns))
+    test_df = pd.read_csv(mab_swedish + 'swedish_mab_test.csv', header=0)
+    test_df = utility.preprocess_pandas(test_df, list(test_df.columns))
 
 
 model_args = ClassificationArgs()
@@ -99,6 +107,8 @@ def train():
         model = ClassificationModel("deberta", "microsoft/deberta-base", use_cuda=True, args=model_args)
     elif args.model_name == 'electra':
         model = ClassificationModel("electra", "google/electra-base-generator", use_cuda=True, args=model_args)
+    elif args.model_name == 'sv_bert':
+        model = ClassificationModel('bert', 'KB/bert-base-swedish-cased', use_cuda=True, args=model_args)
 
 
     # Train the model
@@ -113,4 +123,4 @@ def train():
     wandb.join()
 
     #model.eval_model(test_df, verbose=True)
-wandb.agent(sweep_id, train, count=16)
+wandb.agent(sweep_id, train, count=5)
